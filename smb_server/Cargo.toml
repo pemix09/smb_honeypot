@@ -1,0 +1,14 @@
+[package]
+name = "smb_server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Obsługa dat i czasu w logach
+chrono = "0.4"
+# Kodowanie payloadu do czytelnego formatu (np. ff534d42)
+hex = "0.4"
+# Generowanie losowych odpowiedzi (chaos)
+rand = "0.8"
+# Baza danych SQL (bundled = wbudowana biblioteka C, ważne dla Dockera)
+rusqlite = { version = "0.29", features = ["bundled"] }

@@ -1,0 +1,30 @@
+services:
+  # Usługa 1: Serwer Honeypot (Rust)
+  # Działa w tle, nasłuchuje na porcie 445 i zapisuje do bazy.
+  honeypot:
+    build: ./smb_server
+    container_name: smb_honeypot
+    ports:
+      - "445:445"
+    volumes:
+      - ./data:/app/data  # Współdzielony wolumen na bazę danych
+    restart: always
+    networks:
+      - smb_net
+
+  # Usługa 2: Eksporter danych (Python)
+  # Uruchamiana ręcznie, żeby wygenerować CSV z bazy.
+  exporter:
+    image: python:3.9-slim
+    container_name: smb_exporter
+    volumes:
+      - ./data:/app/data        # Dostęp do bazy danych
+      - ./scripts:/app/scripts  # Dostęp do skryptu
+    working_dir: /app
+    # Domyślnie uruchamia skrypt i kończy działanie
+    command: python scripts/dataset_exporter.py
+    networks:
+      - smb_net
+
+networks:
+  smb_net:
