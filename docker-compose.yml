@@ -1,9 +1,7 @@
 services:
   vuln_smb:
     image: dockurr/samba:latest
-    container_name: vuln_smb
-    ports:
-      - "1445:445"
+    container_name: vuln_smbaa
     # use environment-driven configuration from dockurr/samba
     environment:
       - NAME=share

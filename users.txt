@@ -1,0 +1,9 @@
+admin
+administrator
+guest
+user
+smbuser
+root
+backup
+office
+scan
