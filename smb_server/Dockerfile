@@ -1,5 +1,5 @@
 # Etap 1: Budowanie (Builder)
-FROM rust:1.75 as builder
+FROM rust:latest as builder
 WORKDIR /app
 COPY . .
 # Budujemy wersję release (zoptymalizowaną)
