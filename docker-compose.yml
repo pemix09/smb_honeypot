@@ -32,17 +32,6 @@ services:
     networks:
       - smb_net
 
-  logviewer:
-    image: python:3.11-slim
-    container_name: honeypot_logviewer
-    command: ["python", "/app/scripts/db_tail.py"]
-    volumes:
-      - ./data:/app/data
-      - ./scripts:/app/scripts:ro
-    restart: always
-    networks:
-      - smb_net
-
 volumes:
   data:
 

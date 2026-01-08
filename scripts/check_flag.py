@@ -1,84 +1,77 @@
 #!/usr/bin/env python3
-"""Attempt to fetch FLAG.txt from an SMB share using Python (pysmb if available).
-
-If pysmb is not installed, exits with code 2.
-Also queries the honeypot SQLite DB for related log entries (same as check_flag.sh).
-"""
-import argparse
+import subprocess
 import os
 import sqlite3
-import sys
+import argparse
 
 def query_db(db_path):
     if not os.path.exists(db_path):
-        print('DB not found:', db_path)
+        print(f'\n[!] Baza danych nie znaleziona: {db_path}')
         return
-    print('\n-- Recent logs (last 25) --')
+    
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
-    cur.execute("SELECT id,timestamp,src_ip,src_port,dst_port,protocol,event_type,classification,confidence,parsed,details FROM logs ORDER BY id DESC LIMIT 25;")
+    
+    print('\n' + '='*60)
+    print(' RAPORT PROXY: OSTATNIE ZAREJESTROWANE AKCJE')
+    print('='*60)
+    
+    # Pobieramy ostatnie logi, sprawdzając czy są powiązane z flagą
+    query = """
+        SELECT timestamp, src_ip, event_type, classification, details 
+        FROM logs 
+        ORDER BY id DESC LIMIT 15
+    """
+    cur.execute(query)
     for row in cur.fetchall():
-        print('|'.join(str(x) if x is not None else '' for x in row))
+        ts, ip, ev_type, cls, det = row
+        color = "!" if "flag" in str(det).lower() else "*"
+        print(f"[{ts}] {ip} | {ev_type} | {cls}")
+        if det and det != '{}':
+            print(f"    [{color}] Details: {det}")
 
-    print('\n-- Logs mentioning FLAG or FLAG.txt (parsed/details) --')
-    cur.execute("SELECT id,timestamp,src_ip,src_port,event_type,classification,parsed,details FROM logs WHERE parsed LIKE '%FLAG%' OR details LIKE '%FLAG%' OR parsed LIKE '%FLAG.txt%' OR details LIKE '%FLAG.txt%' ORDER BY id DESC LIMIT 50;")
-    for row in cur.fetchall():
-        print('|'.join(str(x) if x is not None else '' for x in row))
-
-    print('\n-- Recent file-upload malicious detections --')
-    cur.execute("SELECT id,timestamp,src_ip,src_port,event_type,classification,confidence,details FROM logs WHERE classification='file_upload_malicious' ORDER BY id DESC LIMIT 50;")
-    for row in cur.fetchall():
-        print('|'.join(str(x) if x is not None else '' for x in row))
     conn.close()
-
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('ip', nargs='?', default='127.0.0.1')
-    p.add_argument('share', nargs='?', default='share')
+    p.add_argument('--port', type=int, default=4445) # Domyślnie 4445 dla macOS
+    p.add_argument('--share', default='share')
     p.add_argument('--db', default='./data/honeypot.db')
-    p.add_argument('--out', default='downloaded_FLAG.txt')
     args = p.parse_args()
 
-    # Try to use pysmb (SMBConnection)
-    try:
-        from smb.SMBConnection import SMBConnection
-    except Exception as e:
-        print('pysmb not available:', e)
-        sys.exit(2)
+    print(f"[*] Rozpoczynam test za pomocą smbclient na {args.ip}:{args.port}...")
 
-    conn = SMBConnection('', '', 'local', args.ip, use_ntlm_v2=True)
-    try:
-        connected = conn.connect(args.ip, 445, timeout=10)
-    except Exception as e:
-        print('Connection failed:', e)
-        connected = False
-    if not connected:
-        print('Could not connect to SMB on', args.ip)
-        sys.exit(3)
+    # Przygotowanie polecenia smbclient
+    # -p: port, -U: użytkownik (guest%guest), -c: komenda do wykonania
+    smb_cmd = [
+        "smbclient",
+        f"//{args.ip}/{args.share}",
+        "-p", str(args.port),
+        "-U", "guest%guest",
+        "-c", "get FLAG.txt downloaded_FLAG.txt"
+    ]
 
     try:
-        with open(args.out, 'wb') as fp:
-            print('Attempting to retrieve FLAG.txt from', args.share)
-            conn.retrieveFile(args.share, 'FLAG.txt', fp)
-        print('Saved flag to', args.out)
-        try:
-            with open(args.out, 'r') as f:
-                print('--- FLAG content ---')
-                print(f.read())
-        except Exception:
-            pass
-    except Exception as e:
-        print('Failed to retrieve FLAG.txt:', e)
-    finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        # Uruchomienie smbclient
+        result = subprocess.run(smb_cmd, capture_output=True, text=True)
 
-    # Always query DB afterwards
+        if result.returncode == 0:
+            print("[+] SUKCES: smbclient pomyślnie pobrał plik.")
+            if os.path.exists("downloaded_FLAG.txt"):
+                with open("downloaded_FLAG.txt", "r") as f:
+                    print(f"\n--- TREŚĆ FLAGI ---\n{f.read()}\n-------------------")
+        else:
+            print("[-] BŁĄD smbclient:")
+            print(result.stderr)
+            
+    except FileNotFoundError:
+        print("[!] BŁĄD: smbclient nie jest zainstalowany na tym systemie.")
+    except Exception as e:
+        print(f"[-] Wystąpił nieoczekiwany błąd: {e}")
+
+    # Wyświetlenie logów z bazy danych
     query_db(args.db)
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
