@@ -1,8 +1,0 @@
-id,timestamp,src_ip,src_port,event_type,classification,confidence,details
-56,2026-01-08T15:51:29.922336254+00:00,151.101.129.91,29340,data,brute_force,0.9,"{""recent_auth_attempts"":14}"
-55,2026-01-08T15:51:29.892141795+00:00,151.101.129.91,39159,file_operation,brute_force,0.9,"{""recent_auth_attempts"":14}"
-54,2026-01-08T15:51:29.858861462+00:00,151.101.129.91,28054,auth_attempt,brute_force,0.9,"{""recent_auth_attempts"":14}"
-53,2026-01-08T15:51:29.822649045+00:00,151.101.129.91,54462,auth_attempt,brute_force,0.9,"{""recent_auth_attempts"":13}"
-52,2026-01-08T15:51:29.552213628+00:00,151.101.129.91,39928,auth_attempt,brute_force,0.9,"{""recent_auth_attempts"":12}"
-51,2026-01-08T15:51:29.284677212+00:00,151.101.129.91,47629,auth_attempt,brute_force,0.9,"{""recent_auth_attempts"":11}"
-50,2026-01-08T15:51:29.010869336+00:00,151.101.129.91,21469,auth_attempt,brute_force,0.9,"{""recent_auth_attempts"":10}"

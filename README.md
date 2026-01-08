@@ -1,3 +1,47 @@
+# SMB Honeypot (proxy + vulnerable Samba)
+
+This repository provides a simple SMB honeypot composed of:
+
+- A vulnerable Samba container (`vuln_smb`) using `dperson/samba` that exposes a share from `./smb_share`.
+- A TCP proxy (`proxy`) that accepts SMB connections on the host, forwards them to the internal Samba container, logs all interactions to SQLite, and applies simple heuristic classification rules.
+
+Files added/updated:
+- `proxy/proxy.py` — proxy + logger + heuristics
+- `proxy/Dockerfile` — builds proxy image
+- `docker-compose.yml` — brings up `vuln_smb`, `proxy`, and a `logviewer`
+- `schema.sql` — SQLite schema
+
+Run:
+
+1. Build and start the stack:
+
+```bash
+docker compose up --build
+```
+
+2. The proxy listens on the host port `445` and forwards to the internal Samba container. Logs and the SQLite DB are persisted in `./data/honeypot.db`.
+
+Inspect DB:
+
+```bash
+sqlite3 data/honeypot.db
+sqlite> .tables
+sqlite> SELECT * FROM logs ORDER BY id DESC LIMIT 10;
+```
+
+Heuristics/classification (implemented in `proxy/proxy.py`):
+- `brute_force`: many connections from the same IP in a short period (>=10 within 5s)
+- `sql_injection`: request payloads matching common SQLi patterns
+- `command_injection`: payloads containing shell metacharacters or commands
+- `scanning`: many distinct payloads or frequent connections from same IP
+- `file_upload_malicious`: payloads with suspicious file extensions or magic bytes
+- `unknown`: default when no rule matches
+
+Notes & limitations:
+- SMB is a binary protocol. This proxy logs raw chunks (base64) and applies simple text-based heuristics where possible. Deep SMB parsing is out-of-scope for the assignment but could be added.
+- The use of `dperson/samba` is for lab/testing only. Do not expose this stack to the public internet.
+
+Ethics and safety: run attacks only inside the approved lab/network and with explicit consent from course staff.
 🍯 SMB Chaos Honeypot (Medium Interaction)
 
 An intelligent, deceptive SMB honeypot built with Rust and Python. This version features "Medium Interaction" capabilities, meaning it actively tricks attackers into believing they have accessed network shares while logging their specific intents.
@@ -182,3 +226,73 @@ ORDER BY id DESC LIMIT 50;
 ```
 
 If you'd like, I can also add example `smbclient` commands run from within a small helper container (we already used an ephemeral container during testing) and include their exact outputs in the repository documentation.
+
+**Testing & Verification**
+
+- Start the environment:
+
+```bash
+docker compose up --build
+```
+
+- Quick live logs (follow):
+
+```bash
+docker compose logs -f proxy
+```
+
+- Enumerate SMB shares with `nmap`:
+
+```bash
+nmap -p 445 --script smb-enum-shares <HONEYPOT_IP>
+nmap -p 445 --script smb-protocols <HONEYPOT_IP>
+```
+
+- Use `smbclient` to list shares and attempt file operations:
+
+```bash
+# list shares
+smbclient -L //<HONEYPOT_IP> -N
+
+# connect to a share and list files
+smbclient //<HONEYPOT_IP>/share -N -c "ls"
+
+# download specific file (if you know the path)
+smbclient //<HONEYPOT_IP>/share -N -c "get FLAG.txt ./downloaded_FLAG.txt"
+```
+
+- Mounting (Linux) using CIFS (for manual testing):
+
+```bash
+sudo mount -t cifs //<HONEYPOT_IP>/share /mnt/tmp -o guest
+ls -la /mnt/tmp
+sudo umount /mnt/tmp
+```
+
+- Check logged events in SQLite (show last 25 entries and classification):
+
+```bash
+sqlite3 data/honeypot.db "SELECT id,timestamp,src_ip,src_port,dst_port,protocol,event_type,classification,confidence,details FROM logs ORDER BY id DESC LIMIT 25;"
+```
+
+- Example queries for suspicious events:
+
+```sql
+# show possible brute force attempts
+SELECT * FROM logs WHERE classification='brute_force' ORDER BY timestamp DESC;
+
+# show file uploads / filenames extracted
+SELECT id,timestamp,src_ip,parsed,details FROM logs WHERE classification='file_upload_malicious' ORDER BY id DESC LIMIT 50;
+```
+
+**How it works (short)**
+
+- A TCP proxy listens on host port `445` and forwards traffic into the internal Samba container while recording every byte-chunk to the SQLite DB.
+- Each captured payload is analyzed with simple deterministic heuristics and a lightweight SMB-aware parser that attempts to extract operation names and filenames.
+- Every event is recorded in `logs` and aggregated daily in `daily_summary`. Raw payloads are stored base64-encoded under `raw` and parsed hints (operations, filenames, command codes) are stored in `parsed`/`details`.
+
+**Flag (testing)**
+
+- For testing there is a file named `FLAG.txt` placed in the repository `smb_share` directory. It is intentionally not advertised — to retrieve it an operator must connect to the share and request the specific filename (attempts are logged). Do not expose the honeypot or the flag outside the approved lab environment.
+
+If you want, I can also add a short `scripts/check_flag.sh` helper that attempts to fetch the flag and prints the resulting DB entries automatically.

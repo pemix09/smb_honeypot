@@ -1,30 +1,51 @@
 services:
-  # Service 1: Honeypot Server (Rust)
-  # Runs in the background, listens on port 445, and saves data to the database.
-  honeypot:
-    build: ./smb_server
-    container_name: smb_honeypot
+  vuln_smb:
+    image: dockurr/samba:latest
+    container_name: vuln_smb
+    ports:
+      - "1445:445"
+    # use environment-driven configuration from dockurr/samba
+    environment:
+      - NAME=share
+      - USER=guest
+      - PASS=guest
+      - RW=true
+    volumes:
+      - ./smb_share:/storage
+    networks:
+      - smb_net
+
+  proxy:
+    build: ./proxy
+    container_name: smb_proxy
     ports:
       - "445:445"
+    environment:
+      - TARGET_HOST=vuln_smb
+      - TARGET_PORT=445
+      - DB_PATH=/app/data/honeypot.db
+      - LISTEN_PORT=445
     volumes:
-      - ./data:/app/data  # Shared volume for the database
+      - ./data:/app/data
+    depends_on:
+      - vuln_smb
+    networks:
+      - smb_net
+
+  logviewer:
+    image: python:3.11-slim
+    container_name: honeypot_logviewer
+    command: ["python", "/app/scripts/db_tail.py"]
+    volumes:
+      - ./data:/app/data
+      - ./scripts:/app/scripts:ro
     restart: always
     networks:
       - smb_net
 
-  # Service 2: Data Exporter (Python)
-  # Run manually to generate a CSV from the database.
-  exporter:
-    image: python:3.9-slim
-    container_name: smb_exporter
-    volumes:
-      - ./data:/app/data        # Access to the database
-      - ./scripts:/app/scripts  # Access to the script
-    working_dir: /app
-    # By default, it runs the script and then exits
-    command: python scripts/dataset_exporter.py
-    networks:
-      - smb_net
+volumes:
+  data:
 
 networks:
   smb_net:
+    driver: bridge
