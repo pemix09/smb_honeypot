@@ -111,6 +111,10 @@ docker exec smb_proxy sqlite3 -column -header /app/data/honeypot.db \
 "SELECT event_type, count(*) as count FROM logs GROUP BY event_type;"
 ```
 
+#### check daily summary:
+```
+docker exec smb_proxy sqlite3 -line /app/data/honeypot.db "SELECT * FROM daily_summary ORDER BY day DESC;"
+```
 Step 4: Cleanup
 To stop and remove the containers:
 
