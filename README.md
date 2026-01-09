@@ -27,7 +27,7 @@ Check if both containers are running:
 ```
 docker compose ps
 ```
-Status should be Up for both smb_honeypot and vuln_target.
+Status should be Up for both smb_proxy and vuln_smb.
 
 ### 3. View Real-time Logs
 To see the proxy starting up and processing connections:
