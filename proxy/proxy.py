@@ -227,6 +227,8 @@ def analyze_traffic(data, direction, ip):
 
             # B. SMB Login Failure Detection (0xC000006D = STATUS_LOGON_FAILURE)
             # This byte sequence indicates the server rejected the password/username.
+            # this sequence is in little-endian format. However, in official microsoft docs, 
+            # it's represented as 0xC000006D (STATUS_LOGON_FAILURE) - https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-erref/596a1078-e883-4972-9bbc-49e60bebca55
             if b"\x6d\x00\x00\xc0" in data:
                 # Increment failure count for this IP
                 current_fails = LOGIN_FAILURE_HISTORY.get(ip, 0) + 1
