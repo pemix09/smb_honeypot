@@ -44,8 +44,9 @@ docker compose logs -f vuln_smb
 
 Sample usage:
 
-Scenario A: SQL Injection Attack
-Reference Code: [DEMO POINT 3A]
+Scenario A: SQL Injection Attack 
+
+detection in <b>analyze_traffic</b> function
 
 Attacker Action: Send a payload containing SQL keywords.
 
@@ -63,7 +64,8 @@ docker exec smb_proxy sqlite3 /app/data/honeypot.db \
 Expected Result: Classification: sql_injection
 
 Scenario B: Remote Code Execution (RCE)
-Reference Code: [DEMO POINT 3A]
+
+detection in <b>analyze_traffic</b> function
 
 Attacker Action: Attempt to execute a shell command via the stream.
 
@@ -80,8 +82,9 @@ docker exec smb_proxy sqlite3 /app/data/honeypot.db \
 
 Expected Result: Classification: command_injection
 
-Scenario C: Port Scanning (Volumetric Analysis)
-Reference Code: [DEMO POINT 4]
+Scenario C: Port Scanning
+
+detection in code in <b>update_connection_metrics</b>
 
 Attacker Action: Rapidly open and close connections
 

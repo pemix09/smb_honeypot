@@ -2,7 +2,6 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# --- ZMIANA TUTAJ: Dodajemy sqlite3 ---
 RUN apt-get update && \
     apt-get install -y netcat-openbsd sqlite3 && \
     rm -rf /var/lib/apt/lists/*
