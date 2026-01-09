@@ -1,5 +1,14 @@
-FROM python:3.11-slim
+FROM python:3.9-slim
+
 WORKDIR /app
-COPY proxy.py /app/proxy.py
-# No extra packages required; use stdlib
+
+# --- ZMIANA TUTAJ: Dodajemy sqlite3 ---
+RUN apt-get update && \
+    apt-get install -y netcat-openbsd sqlite3 && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY proxy.py .
+RUN mkdir -p /app/data
+
+ENV PYTHONUNBUFFERED=1
 CMD ["python", "proxy.py"]
