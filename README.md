@@ -1,67 +1,112 @@
-SMB Honeypot Proxy System
-A transparent, logging-capable SMB proxy designed to sit in front of a vulnerable Samba instance. It captures all interactions, classifies traffic using heuristics, and stores metadata/payloads in a SQLite database for security analysis.
+# SMB Honeypot Proxy (Docker Compose Edition)
 
-1. Architecture
-The system is built using Docker and Python, focusing on the isolation of the vulnerable service:
+This project demonstrates an Asynchronous **Man-in-the-Middle (MITM) Honeypot Proxy** for the SMB protocol. It intercepts traffic, classifies attacks using packets analysis, and logs events to an SQLite database.
 
-Vulnerable SMB (vuln_smb): A Samba container running in an isolated Docker network (smb_net). It is not directly exposed to the host.
+## Architecture
 
-Honeypot Proxy (proxy): A custom Python asyncio application. It acts as the gatekeeper, intercepting all traffic, performing real-time heuristic analysis, and logging data to SQLite before forwarding it to the backend.
+The system is containerized using **Docker Compose**:
+1.  **`proxy`**: The Python Asyncio Proxy (Port 445).
+2.  **`vuln_smba`**: A simulation of a vulnerable server (Internal network).
 
-2. Prerequisites
-Docker & Docker Compose
+---
 
-smbclient: Required for running the verification scripts (usually available via brew install samba on macOS or apt install smbclient on Linux).
+## Step 1: Deployment
 
-Python 3.11+: For executing the local check script.
+Instead of manually setting up listeners, we use Docker Compose to orchestrate the environment.
 
-3. Installation & Startup
-Port Configuration: On macOS, the system often reserves port 445. If you encounter "Address already in use" errors, modify the ports mapping in docker-compose.yml for the proxy service to use an alternative external port:
+### 1. Build and Start
+Run the following command in the project directory:
 
-YAML
+```
+docker compose up --build -d
+```
+--build: Rebuilds the Python image.
+-d: Runs containers in the background (detached mode).
 
-ports:
-  - "4445:445" # External 4445 -> Internal 445
-Start the containers:
+### 2. Verify Status
+Check if both containers are running:
 
-Bash
+```
+docker compose ps
+```
+Status should be Up for both smb_honeypot and vuln_target.
 
-docker compose up -d --build
-4. Verification
-To verify that the proxy is correctly capturing and forwarding traffic, run the provided simulation script:
+### 3. View Real-time Logs
+To see the proxy starting up and processing connections:
 
-Bash
+```
+docker compose logs -f honeypot
+```
 
-# Usage: ./scripts/check_flag.py <IP> --port <PORT>
-./scripts/check_flag.py 127.0.0.1 --port 445
-The script will:
+Sample usage:
 
-Connect to the SMB share via the proxy.
+Scenario A: SQL Injection Attack
+Reference Code: [DEMO POINT 3A]
 
-Download the FLAG.txt file.
+Attacker Action: Send a payload containing SQL keywords.
 
-Query the honeypot.db and display the captured logs directly in your terminal.
+```
+echo "admin' UNION SELECT 1, password FROM users --" | nc localhost 445
+```
 
-5. Security & Logging Features
-Asynchronous Logging: Uses an internal asyncio.Queue and a background worker to ensure that database I/O operations do not introduce latency in the SMB stream, preventing session timeouts.
+Verification: Check the logs inside the Docker container:
 
-Protocol Classification: The proxy identifies the dialect being used (e.g., Legacy SMBv1 vs. Modern SMB2/3) and logs it in the classification field.
+```
+docker exec smb_honeypot sqlite3 /app/data/honeypot.db \
+"SELECT timestamp, event_type, classification FROM logs WHERE classification='sql_injection' ORDER BY id DESC LIMIT 1;"
+```
 
-Raw Payload Capture: All packets are Base64 encoded and stored in the raw column, allowing for post-incident deep packet inspection (DPI).
+Expected Result: Classification: sql_injection
 
-Robustness: The proxy is designed with wide try-except blocks to handle malformed packets or unsupported dialects without crashing the service.
+Scenario B: Remote Code Execution (RCE)
+Reference Code: [DEMO POINT 3A]
 
-6. Database Schema
-The SQLite database (data/honeypot.db) follows this structure:
+Attacker Action: Attempt to execute a shell command via the stream.
 
-timestamp: UTC event time.
+```
+echo "GET /index.php?cmd=/bin/sh HTTP/1.1" | nc localhost 445
+```
 
-src_ip / src_port: Attacker identification.
+Verification:
 
-event_type: Category of event (connection_open, data_c2s, data_s2c, etc.).
+```
+docker exec smb_honeypot sqlite3 /app/data/honeypot.db \
+"SELECT timestamp, classification, details FROM logs WHERE classification='command_injection' ORDER BY id DESC LIMIT 1;"
+```
 
-raw: The Base64 encoded packet.
+Expected Result: Classification: command_injection
 
-classification: Heuristic label (e.g., flag_access_attempt, smb2_3_traffic).
+Scenario C: Port Scanning (Volumetric Analysis)
+Reference Code: [DEMO POINT 4]
 
-details: JSON metadata (packet size, detected filenames, etc.).
+Attacker Action: Rapidly open and close connections
+
+```
+for i in {1..25}; do nc -z localhost 445; done
+```
+
+Verification:
+
+```
+docker exec smb_honeypot sqlite3 /app/data/honeypot.db \
+"SELECT timestamp, src_ip, classification, details FROM logs WHERE classification='scanning' ORDER BY id DESC LIMIT 1;"
+```
+
+Expected Result: Classification: scanning
+
+Step 3: Inspecting the Database
+Since Docker maps the ./data volume, the database is persisted. You can inspect traffic direction (confirming the Enum usage).
+
+Check Traffic Flow (clientToServer vs serverToClient):
+
+```
+docker exec smb_honeypot sqlite3 -column -header /app/data/honeypot.db \
+"SELECT event_type, count(*) as count FROM logs GROUP BY event_type;"
+```
+
+Step 4: Cleanup
+To stop and remove the containers:
+
+```
+docker compose down
+```
