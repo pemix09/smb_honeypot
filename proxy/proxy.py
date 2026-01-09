@@ -6,6 +6,7 @@ import os
 import time
 import re
 from datetime import datetime
+from enum import Enum
 
 # --- Configuration ---
 # Load configuration from environment variables (Docker friendly)
@@ -17,6 +18,15 @@ DB_PATH = os.getenv("DB_PATH", "/app/data/honeypot.db")
 
 # Queue for asynchronous logging to prevent I/O blocking
 log_queue = asyncio.Queue()
+
+# --- Enums ---
+class TrafficDirection(str, Enum):
+    """
+    Defines the direction of the traffic flow.
+    Values updated to full descriptive names as requested.
+    """
+    CLIENT_TO_SERVER = "clientToServer"
+    SERVER_TO_CLIENT = "serverToClient"
 
 # --- Global State (In-Memory) ---
 # 1. Connection History: { "192.168.1.5": [timestamp1, timestamp2, ...] }
@@ -149,14 +159,14 @@ def update_connection_metrics(ip):
     
     return len(CONNECTION_HISTORY[ip])
 
-def analyze_traffic(data, direction, ip):
+def analyze_traffic(data, direction: TrafficDirection, ip):
     """
     Deep Packet Inspection (DPI) & Response Analysis.
     Combines string matching, UTF-16 extraction (for usernames), and server error codes.
     
     Args:
         data: Raw bytes.
-        direction: 'c2s' (Client->Server) or 's2c' (Server->Client).
+        direction: TrafficDirection Enum (CLIENT_TO_SERVER or SERVER_TO_CLIENT).
         ip: Source IP address.
         
     Returns:
@@ -174,7 +184,7 @@ def analyze_traffic(data, direction, ip):
         
         # ADVANCED: Try to extract usernames/filenames from SMB binary (UTF-16LE)
         # This helps in identifying what username was used in Brute Force
-        if direction == 'c2s':
+        if direction == TrafficDirection.CLIENT_TO_SERVER:
             try:
                 raw_utf16 = data.decode('utf-16le', errors='ignore')
                 # Regex to find alphanumeric strings between 4 and 20 chars
@@ -194,7 +204,7 @@ def analyze_traffic(data, direction, ip):
 
     try:
         # --- 1. Client to Server Analysis (Attack Patterns) ---
-        if direction == 'c2s':
+        if direction == TrafficDirection.CLIENT_TO_SERVER:
             # A. SQL Injection signatures
             sql_patterns = ["union select", "drop table", "' or '1'='1", "information_schema"]
             if any(p in decoded_str for p in sql_patterns):
@@ -218,7 +228,7 @@ def analyze_traffic(data, direction, ip):
                 return "scanning", 0.5, details
 
         # --- 2. Server to Client Analysis (Response Verification) ---
-        elif direction == 's2c':
+        elif direction == TrafficDirection.SERVER_TO_CLIENT:
             # A. SQL Error in response (Increases confidence of SQLi)
             sql_errors = ["sql syntax", "mysql_fetch", "ora-009", "syntax error"]
             if any(e in decoded_str for e in sql_errors):
@@ -227,8 +237,6 @@ def analyze_traffic(data, direction, ip):
 
             # B. SMB Login Failure Detection (0xC000006D = STATUS_LOGON_FAILURE)
             # This byte sequence indicates the server rejected the password/username.
-            # this sequence is in little-endian format. However, in official microsoft docs, 
-            # it's represented as 0xC000006D (STATUS_LOGON_FAILURE) - https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-erref/596a1078-e883-4972-9bbc-49e60bebca55
             if b"\x6d\x00\x00\xc0" in data:
                 # Increment failure count for this IP
                 current_fails = LOGIN_FAILURE_HISTORY.get(ip, 0) + 1
@@ -251,7 +259,7 @@ def analyze_traffic(data, direction, ip):
 
 # --- Networking & Forwarding ---
 
-async def forward(reader, writer, ip, port, direction):
+async def forward(reader, writer, ip, port, direction: TrafficDirection):
     """
     Forwards data between Client and Target, intercepting for analysis.
     """
@@ -277,11 +285,12 @@ async def forward(reader, writer, ip, port, direction):
                      parsed_content = f"HEX: {data.hex()[:50]}..."
 
                 # We log everything. 'benign' events have 0 confidence.
+                # NOTE: Using direction.value to keep the long strings 'data_clientToServer' in DB
                 log_queue.put_nowait({
                     'ts': datetime.utcnow().isoformat() + 'Z',
                     'ip': ip, 
                     'port': port, 
-                    'type': f'data_{direction}',
+                    'type': f'data_{direction.value}', 
                     'raw': base64.b64encode(data).decode('ascii'),
                     'parsed': parsed_content,
                     'class': cls, 
@@ -342,9 +351,10 @@ async def handle_client(c_reader, c_writer):
         s_reader, s_writer = await asyncio.open_connection(TARGET_HOST, TARGET_PORT)
         
         # --- Step 3: Bidirectional Forwarding ---
+        # Using the new Enum members here
         await asyncio.gather(
-            forward(c_reader, s_writer, ip, port, 'c2s'), # Client -> Server (Payloads)
-            forward(s_reader, c_writer, ip, port, 's2c'), # Server -> Client (Errors/Confirmations)
+            forward(c_reader, s_writer, ip, port, TrafficDirection.CLIENT_TO_SERVER),
+            forward(s_reader, c_writer, ip, port, TrafficDirection.SERVER_TO_CLIENT),
             return_exceptions=True
         )
     except Exception as e:
