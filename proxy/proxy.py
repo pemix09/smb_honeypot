@@ -15,26 +15,21 @@ TARGET_HOST = os.getenv("TARGET_HOST", "127.0.0.1")
 TARGET_PORT = int(os.getenv("TARGET_PORT", "44445"))
 DB_PATH = os.getenv("DB_PATH", "honeypot.db")
 
-# FIX: Inicjalizacja jako None. Prawdziwa kolejka powstanie w main()
 log_queue = None
 
 class TrafficDirection(str, Enum):
     CLIENT_TO_SERVER = "clientToServer"
     SERVER_TO_CLIENT = "serverToClient"
 
-# --- Global State ---
 CONNECTION_HISTORY = {}
 LOGIN_FAILURE_HISTORY = {}
 
-# Constants
 HISTORY_WINDOW = 60
 BRUTE_FORCE_THRESHOLD = 10
 SCANNING_THRESHOLD = 20
 
-# --- Database Management ---
 def init_db():
     try:
-        # Upewnij się, że katalog istnieje
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
         
         conn = sqlite3.connect(DB_PATH)
@@ -74,7 +69,6 @@ def init_db():
 
 async def log_worker():
     while True:
-        # Tutaj log_queue już będzie zainicjalizowane w main
         record = await log_queue.get()
         try:
             await asyncio.to_thread(sync_save, record)
@@ -87,7 +81,6 @@ def update_daily_summary(cur, day_str):
     """
     Recalculates summary for the given day based on logs and updates daily_summary table.
     """
-    # 1. Pobierz ogólną liczbę zdarzeń oraz czas pierwszego i ostatniego zdarzenia
     cur.execute('''
         SELECT COUNT(*), MIN(timestamp), MAX(timestamp) 
         FROM logs 
@@ -98,7 +91,6 @@ def update_daily_summary(cur, day_str):
     first_seen = row[1]
     last_seen = row[2]
 
-    # 2. Pobierz podział na klasy ataków
     cur.execute('''
         SELECT classification, COUNT(*) 
         FROM logs 
@@ -109,7 +101,6 @@ def update_daily_summary(cur, day_str):
     stats = dict(cur.fetchall())
     by_class_json = json.dumps(stats)
 
-    # 3. Wstaw lub Nadpisz (Upsert) w tabeli daily_summary
     cur.execute('''
         INSERT OR REPLACE INTO daily_summary 
         (day, total_events, by_class, first_seen, last_seen)
@@ -122,7 +113,6 @@ def sync_save(rec):
         cur = conn.cursor()
         day_str = rec['ts'][:10] 
         
-        # A. Insert log
         cur.execute('''INSERT INTO logs 
             (timestamp, day, src_ip, src_port, dst_port, protocol, 
              event_type, raw, parsed, classification, confidence, details, headers)
@@ -130,7 +120,6 @@ def sync_save(rec):
             (rec['ts'], day_str, rec['ip'], rec['port'], TARGET_PORT, 'SMB',
              rec['type'], rec['raw'], rec['parsed'], rec['class'], rec['conf'], rec['det'], rec['headers']))
         
-        # B. Update Summary
         update_daily_summary(cur, day_str)
 
         conn.commit()
@@ -231,14 +220,12 @@ async def handle_client(c_reader, c_writer):
         except: pass
 
 async def main():
-    # --- FIX CRITICAL: Initialize Queue inside the loop ---
     global log_queue
     log_queue = asyncio.Queue()
     
     print(f"[*] Initializing SMB Honeypot Proxy...")
     init_db()
     
-    # Uruchom workera
     asyncio.create_task(log_worker())
     
     try:

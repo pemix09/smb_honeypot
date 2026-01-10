@@ -44,7 +44,7 @@ docker compose logs -f vuln_smb
 
 Sample usage:
 
-Scenario A: SQL Injection Attack 
+#### Scenario A: SQL Injection Attack 
 
 detection in <b>analyze_traffic</b> function
 
@@ -63,7 +63,7 @@ docker exec smb_proxy sqlite3 /app/data/honeypot.db \
 
 Expected Result: Classification: sql_injection
 
-Scenario B: Remote Code Execution (RCE)
+#### Scenario B: Remote Code Execution (RCE)
 
 detection in <b>analyze_traffic</b> function
 
@@ -80,9 +80,9 @@ docker exec smb_proxy sqlite3 /app/data/honeypot.db \
 "SELECT timestamp, classification, details FROM logs WHERE classification='command_injection' ORDER BY id DESC LIMIT 1;"
 ```
 
-Expected Result: Classification: command_injection
+Expected Result: Classification: <b>command_injection</b>
 
-Scenario C: Port Scanning
+#### Scenario C: Port Scanning
 
 detection in code in <b>update_connection_metrics</b>
 
@@ -99,7 +99,7 @@ docker exec smb_proxy sqlite3 /app/data/honeypot.db \
 "SELECT timestamp, src_ip, classification, details FROM logs WHERE classification='scanning' ORDER BY id DESC LIMIT 1;"
 ```
 
-Expected Result: Classification: scanning
+Expected Result: Classification: <b>scanning</b>
 
 Step 3: Inspecting the Database
 Since Docker maps the ./data volume, the database is persisted. 
